@@ -17,7 +17,7 @@ function usage {
         -b,--build <input dts_file> [out(dtb) name]
         -s,--status
         -p,--print <dtb file>
-        -a, --activate <dtb file>
+        -a,--activate <dtb file>
     "
 }
 
