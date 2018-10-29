@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 function unlock_mmc {
-    source /usr/share/device-tree/conf/fw_unlock_mmc.sh
+    source /usr/share/device-tree-conf/conf/fw_unlock_mmc.sh
 }
 
 function copy_env_config {
     # TODO: fix this for each platform. Or find a better way of doing it
-    cp /usr/share/device-tree/conf/fw_env.config /etc
+    cp /usr/share/device-tree-conf/conf/fw_env.config /etc
 }
 
 function usage {
