@@ -183,7 +183,7 @@ function apply_overlays {
         exit -1;
     fi
 
-    OVERLAY_FILES=$1
+    OVERLAY_FILES=$@
 
     mount_part
     rm -rf ${BOOT_MNT}/fdt_overlays/*
