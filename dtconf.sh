@@ -1,11 +1,42 @@
 #!/usr/bin/env bash
-function unlock_mmc {
-    source /usr/share/device-tree-conf/conf/fw_unlock_mmc.sh
+
+function init_dtconf {
+    # Determine module Toradex 4 digit product ID
+    PRODUCT_ID="$(tr -d '\0' </proc/device-tree/toradex,product-id)"
+
+case "${PRODUCT_ID}" in
+    "0039")
+        MMCBLCKBOOT="mmcblk1boot0"
+        BOOT_PART="/dev/mmcblk1p1"
+    ;;
+    "0027"|"0028"|"0029"|"0035")
+       MMCBLCKBOOT="mmcblk2boot0"
+       BOOT_PART="/dev/mmcblk2p1"
+    ;; 
+    "0014"|"0015"|"0017")
+       MMCBLCKBOOT="mmcblk1boot0"
+       BOOT_PART="/dev/mmcblk1p1"
+    ;; 
+    *)
+        echo "Unsupported device"
+        exit 1
+    ;;
+esac
+}
+
+# Give fw_setenv mmcblk0boot0 write permissions
+function fw_setenv {
+    echo "0" > /sys/block/${MMCBLCKBOOT}/force_ro
+    /usr/sbin/fw_setenv "$@"
+    sync
+    echo "1" > /sys/block/${MMCBLCKBOOT}/force_ro
 }
 
 function copy_env_config {
     # TODO: fix this for each platform. Or find a better way of doing it
-    cp /usr/share/device-tree-conf/conf/fw_env.config /etc
+    rm -rf /etc/fw_env.config
+    touch /etc/fw_env.config
+    echo "/dev/${MMCBLCKBOOT}       -0x2200    0x2000" > /etc/fw_env.config
 }
 
 function usage {
@@ -50,7 +81,6 @@ function long_usage {
 }
 
 # TODO: Deal with platform specifics
-BOOT_PART=/dev/mmcblk2p1
 BOOT_MNT=/mnt/part
 
 function mount_part {
@@ -61,7 +91,7 @@ function mount_part {
             echo "Failed to mount ${BOOT_PART} to ${BOOT_MNT}"
         fi
     fi
-	mkdir -p ${BOOT_MNT}/fdt_overlays
+    mkdir -p ${BOOT_MNT}/fdt_overlays
 }
 
 function active_overlays {
@@ -72,8 +102,12 @@ function active_overlays {
 
 function active_dt {
     env_string=$(fw_printenv |grep "fdtfile=")
+    if [ -z "${env_string}" ]; then
+        echo "Could not find active device tree. Provide active device" 
+        exit 1
+    fi
     IFS='=' read -r -a pieces <<< "$env_string"
-    echo ${pieces[1]}
+    ACTIVE_DEVICE_TREE=${pieces[1]}
 }
 
 function devicetree_status {
@@ -82,12 +116,12 @@ function devicetree_status {
     echo ""
     echo "== System Device Trees:"
     files=$(ls -1 ${BOOT_MNT}/*.dtb 2> /dev/null)
-    if [ -z "$files" ];then
+    if [ -z "${files}" ];then
         echo "No Device Trees Found"
     else
-        for f in $files
+        for f in ${files}
         do
-            echo $f
+            echo ${f}
         done
     fi
 }
@@ -95,7 +129,7 @@ function devicetree_status {
 function overlay_status {
     echo "== Active Overlays:"
     files=$(active_overlays)
-    if [ -z "$files" ];then
+    if [ -z "${files}" ];then
         echo "No Active Overlays"
     else
         for f in $files
@@ -106,23 +140,23 @@ function overlay_status {
     echo ""
     echo "== System Overlays:"
     files=$(ls -1 ${BOOT_MNT}/fdt_overlays/*.dtbo 2> /dev/null)
-    if [ -z "$files" ];then
+    if [ -z "${files}" ];then
         echo "No Overlays Found"
     else
-        for f in $files
+        for f in ${files}
         do
-            echo $f
+            echo ${f}
         done
     fi
     echo ""
     echo "== Other Overlays:"
     files=$(ls -1 ${DT_SANDBOX}/overlays/*.dtbo 2> /dev/null)
-    if [ -z "$files" ];then
+    if [ -z "${files}" ];then
         echo "No Overlays Found"
     else
-        for f in $files
+        for f in ${files}
         do
-            echo $f
+            echo ${f}
         done
     fi
 }
@@ -140,7 +174,7 @@ function build_dtb {
         FILE_EXT=".dtbo"
     fi
 
-    filename=$(basename -- "$INPUT_DTS")
+    filename=$(basename -- "${INPUT_DTS}")
     filename="${filename%.*}"${FILE_EXT}
 
     # Optional 2nd parameter as the output file.
@@ -159,12 +193,14 @@ function verify_overlay {
     DTBO=$1
     DTB=$2
 
-    copy_env_config
-
     # If dtb not specified we assume the active dtb
     if [ -z "$DTB" ];then
-        DTB=${BOOT_MNT}/$(active_dt)
+        active_dt
+        DTB=${BOOT_MNT}/${ACTIVE_DEVICE_TREE}
+    else
+        DTB=${BOOT_MNT}/${DTB}
     fi
+
     # Save the output to /tmp... we dont care about it.
     if fdtoverlay -i ${DTB} -o /tmp/$(basename -- "$DTB").tmp ${DTBO} ; then
         echo "Overlay is Valid"
@@ -176,8 +212,6 @@ function verify_overlay {
 
 function apply_overlays {
 
-    copy_env_config
-
     if [ $# -lt 1 ];then
         echo "Specify input overlay file(s)"
         exit -1;
@@ -185,11 +219,10 @@ function apply_overlays {
 
     OVERLAY_FILES=$@
 
-    mount_part
     rm -rf ${BOOT_MNT}/fdt_overlays/*
     FILES_STRING=""
 
-    for FILE in $OVERLAY_FILES
+    for FILE in ${OVERLAY_FILES}
     do
         if [ ! -f ${FILE} ];then
             echo "${FILE} doesn't exist"
@@ -201,7 +234,6 @@ function apply_overlays {
     done
 
     ### Set the uboot environment variable to pick up new overlay(s)
-    unlock_mmc
     fw_setenv fdt_overlays ${FILES_STRING} || {
         echo "Failed to set uboot environment variable"
         exit -1
@@ -210,8 +242,6 @@ function apply_overlays {
 }
 
 function clear_overlays {
-    copy_env_config
-    unlock_mmc
     # Set it to nothing
     fw_setenv fdt_overlays
 }
@@ -221,14 +251,11 @@ function apply_devicetree {
         echo "Specify input device-tree file"
         exit -1;
     fi
-    copy_env_config
-    mount_part
     # Copy device-tree (.dtb) to the boot partition
     cp $1 /${BOOT_MNT}/ || {
     exit errno
     }
     ### Set the uboot environment variable to pick up new device-tree
-    unlock_mmc
     fw_setenv fdtfile $(basename -- "$1") || {
         echo "Failed to set uboot environment variable"
         exit -1
@@ -238,24 +265,38 @@ function apply_devicetree {
 
 function activate_overlay
 {
-    build_dtb $1
-    verify_overlay $filename
-    apply_overlays $filename
+    OVERLAY_FILES=$@
+    OVERLAYS=""
+
+    for FILE in ${OVERLAY_FILES}
+    do
+        echo "Building ${FILE}"
+        build_dtb ${FILE}
+        echo "Verifying ${FILE}"
+        verify_overlay ${filename}
+        OVERLAYS="${OVERLAYS} ${filename}"
+    done
+    echo "Applying overlays: ${OVERLAYS}"
+    apply_overlays ${OVERLAYS}
 }
 
+
+init_dtconf
+copy_env_config
+mount_part
+
 case "$1" in
+
     -h|--help)
         long_usage
         exit
         ;;
 
     -a|--activate)
-        mount_part
         shift && activate_overlay $@
         ;;
 
     -o|--overlay)
-        mount_part
         if [ $# -eq 1 ];then
             echo ""
             overlay_status
@@ -277,8 +318,6 @@ case "$1" in
         ;;
 
     -s|--status)
-        mount_part
-        echo ""
         devicetree_status
         echo ""
         overlay_status
