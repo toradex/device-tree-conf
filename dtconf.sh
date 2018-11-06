@@ -265,7 +265,19 @@ function apply_devicetree {
 
 function activate_overlay
 {
-    OVERLAY_FILES=$@
+    CURRENT_OVERLAY=""
+    OVERLAY_FILES=""
+
+    while [ -n "${1}" ]; do 
+        if [ "${1}" = "-c" ]; then
+            shift  
+            CURRENT_OVERLAY=${1}
+        else
+            OVERLAY_FILES="${OVERLAY_FILES} ${1}"
+        fi
+    shift
+    done
+
     OVERLAYS=""
 
     for FILE in ${OVERLAY_FILES}
@@ -273,7 +285,7 @@ function activate_overlay
         echo "Building ${FILE}"
         build_dtb ${FILE}
         echo "Verifying ${FILE}"
-        verify_overlay ${filename}
+        verify_overlay ${filename} ${CURRENT_OVERLAY}
         OVERLAYS="${OVERLAYS} ${filename}"
     done
     echo "Applying overlays: ${OVERLAYS}"
@@ -295,7 +307,7 @@ case "$1" in
     -a|--activate)
         shift && activate_overlay $@
         ;;
-
+        
     -o|--overlay)
         if [ $# -eq 1 ];then
             echo ""
