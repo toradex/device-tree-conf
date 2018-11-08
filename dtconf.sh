@@ -100,19 +100,19 @@ function active_overlays {
     echo ${pieces[1]}
 }
 
-function active_dt {
+function print_active_dt {
     env_string=$(fw_printenv |grep "fdtfile=")
     if [ -z "${env_string}" ]; then
         echo "Could not find active device tree. Provide active device" 
         exit 1
     fi
     IFS='=' read -r -a pieces <<< "$env_string"
-    ACTIVE_DEVICE_TREE=${pieces[1]}
+    echo ${pieces[1]}
 }
 
 function devicetree_status {
     echo "== Active Device Tree:"
-    active_dt
+    print_active_dt
     echo ""
     echo "== System Device Trees:"
     files=$(ls -1 ${BOOT_MNT}/*.dtb 2> /dev/null)
@@ -195,7 +195,7 @@ function verify_overlay {
 
     # If dtb not specified we assume the active dtb
     if [ -z "$DTB" ];then
-        active_dt
+        ACTIVE_DEVICE_TREE=$(print_active_dt)
         DTB=${BOOT_MNT}/${ACTIVE_DEVICE_TREE}
     else
         DTB=${BOOT_MNT}/${DTB}
