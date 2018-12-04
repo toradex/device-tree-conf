@@ -26,10 +26,9 @@ esac
 
 # Give fw_setenv mmcblk0boot0 write permissions
 function fw_setenv {
-    echo "0" > /sys/block/${MMCBLCKBOOT}/force_ro
-    /usr/sbin/fw_setenv "$@"
+    touch /mnt/part/overlays.txt
+    echo "fdt_overlays=$@" > /mnt/part/overlays.txt
     sync
-    echo "1" > /sys/block/${MMCBLCKBOOT}/force_ro
 }
 
 function copy_env_config {
@@ -95,7 +94,7 @@ function mount_part {
 }
 
 function active_overlays {
-    env_string=$(fw_printenv |grep "fdt_overlays=")
+    env_string=$(cat ${BOOT_MNT}/overlays.txt)
     IFS='=' read -r -a pieces <<< "$env_string"
     echo ${pieces[1]}
 }
@@ -233,9 +232,9 @@ function apply_overlays {
         FILES_STRING="${FILES_STRING} $(basename ${FILE})"
     done
 
-    ### Set the uboot environment variable to pick up new overlay(s)
-    fw_setenv fdt_overlays ${FILES_STRING} || {
-        echo "Failed to set uboot environment variable"
+    ### Set the overlays.txt file
+    fw_setenv ${FILES_STRING} || {
+        echo "Failed to write overlays.txt"
         exit -1
     }
     echo "A reboot is necessary for changes to take effect..."
@@ -243,7 +242,8 @@ function apply_overlays {
 
 function clear_overlays {
     # Set it to nothing
-    fw_setenv fdt_overlays
+    echo "Clearing overlays"
+    rm /mnt/part/overlays.txt 2>/dev/null
 }
 
 function apply_devicetree {
