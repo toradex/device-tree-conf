@@ -1,0 +1,565 @@
+#!/usr/bin/python3
+
+import sys
+import getopt
+import time
+import os
+import subprocess
+import shutil
+import logging
+import typing
+
+colibriimx6ids = ["0014", "0015", "0016", "0017"]
+apalisimx6pids = ["0027", "0028", "0029", "0035"]
+colibriimx7nandids = ["0032", "0033"]
+colibriimx7emmcids = ["0039"]
+
+product_id = None
+mmcblkboot = None
+bootpart = None
+
+bootmnt = "/mnt/part"
+
+
+def usage():
+    logging.info("Usage: dtconf < command > [arguments]\n"
+                 "commands:\n"
+                 "\t-h, --help\n"
+                 "\t-b, --build < dts file(s) > [ dtb/dtbo file ]\n"
+                 "\t-s, --status\n"
+                 "\t-v, --validate < dtb file(s) > -c [ active dtb name ]\n"
+                 "\t-e, --enable <dtb name/all>\n"
+                 "\t-d, --disable <dtb name/all>\n"
+                 "\t-a, --activate < dts file(s) > -c [ active dtb name]\n"
+                 "\t-p, --print <dtb file(s)>")
+
+
+def long_usage():
+    usage()
+    logging.info("\tstatus:\n"
+                 "\t\tPrint existing state of device trees and overlays.\n"
+                 "\tbuild:\n"
+                 "\t\tCompile a device tree or overlay.\n"
+                 "\t\tBy default, the output filename is the same as the input filename\n"
+                 "\t\twith dtb or dtbo as file extension\n"
+                 "\t\t--output option can be used to use a different output name"
+                 "\tvalidate:\n"
+                 "\t\tValidate overlay against provided device-tree or active one."
+                 "\tenable:\n"
+                 "\t\tAdds specified overlay to the list of overlays that are applied at boot.\n"
+                 "\tactivate:\n"
+                 "\t\tBuilds, validates and enables overlays if they are valid."
+                 "\tdisable:\n"
+                 "\t\tRemove specified overlay from the list of overlays that are applied at boot.\n"
+                 "\t\tprovide specific overlay file name or all to remove all active overlays.\n"
+                 "\tprint:\n"
+                 "\t\tPrint out dump of a binary overlay file. This is not a valid dts file,\n"
+                 "\t\tthis feature can be used only for debugging/validation.\n")
+
+
+def init() -> bool:
+    """ Module initialization, detect module type and mounts boot partition.
+
+        It must be called before any other function call from this module
+    """
+
+    global product_id
+    global mmcblkboot
+    global bootpart
+
+    # TODO: add support for NAND-based imx7 and ULL
+
+    with open("/proc/device-tree/toradex,product-id", "r") as f:
+        product_id = f.readline()
+
+    product_id = product_id[:-1]
+
+    if product_id in colibriimx7emmcids:
+        mmcblkboot = "mmcblk1boot"
+        bootpart = "/dev/mmcblk1p1"
+    elif product_id in colibriimx6ids:
+        mmcblkboot = "mmcblk1boot0"
+        bootpart = "/dev/mmcblk1p1"
+    elif product_id in apalisimx6pids:
+        mmcblkboot = "mmcblk2boot0"
+        bootpart = "/dev/mmcblk2p1"
+    else:
+        product_id = None
+
+    if product_id is None:
+        logging.error(
+            "Unknown device (check that container is running in privileged mode and with the suggested command line parameters).")
+        return False
+
+    with open("/etc/fw_env.config", "w") as f:
+        f.write("/dev/"+mmcblkboot+"       -0x2200    0x2000")
+
+    if not os.path.ismount(bootmnt):
+        logging.info("Mounting "+bootmnt)
+
+        if not os.path.exists(bootmnt):
+            os.mkdir(bootmnt)
+
+        if subprocess.run(["mount", bootpart, bootmnt]).returncode != 0:
+            logging.error("Failed to mount "+bootpart+" "+bootmnt)
+            return False
+
+    return True
+
+
+def build_dtb(filename, outputfile=None) -> str:
+    """ Compile a dtbs file into dtb or dtbo output
+
+        Args:
+            filename (str) - path of source file
+            outputfile (str) - output file name, if None then extension
+                is appended to source file name
+
+        Returns:
+            name of generated file
+
+        Raises:
+            Exception: invalid file name or build errors
+    """
+
+    if not os.path.isfile(filename):
+        raise Exception("Invalid filename")
+
+    if outputfile is None:
+        ext = ".dtb"
+
+        with open(filename, "r") as f:
+            for line in f:
+                if "fragment@0" in line:
+                    ext = ".dtbo"
+                    break
+
+        outputfile = os.path.basename(filename)
+        outputfile = outputfile + ext
+
+    dtcprocess = subprocess.run(
+        ["dtc", "-@", "-I", "dts", "-O", "dtb", "-o", outputfile, filename], stderr=subprocess.PIPE)
+
+    if dtcprocess.returncode != 0:
+        raise Exception("Failed to build device tree.\n" +
+                        dtcprocess.stderr.decode("utf-8"))
+
+    logging.info("Successfully built device tree")
+    return outputfile
+
+
+def get_dt_search_path() -> str:
+    """ Return folder where device trees are stored
+
+        Functions checks loader enviroment to find the right ostree
+        layer where currently usable device trees are stored.
+
+        Returns:
+            str - folder path (with final /)
+    """
+    searchpath = None
+
+    with open("/boot/loader/uEnv.txt", "r") as f:
+        for line in f:
+            if line.startswith("fdt_path="):
+                searchpath = line[len("fdt_path="):]
+                searchpath = searchpath.rstrip()
+                break
+
+    if searchpath is not None:
+        searchpath = "/boot"+searchpath
+
+    return searchpath
+
+
+def get_active_dt_path(activedt) -> str:
+    """ Returns full path of currently active device tree
+
+        Args:
+            activedt (str): device tree name (required for imx7)
+
+        Returns:
+            full path of device tree file or None if no dt is found
+
+        Raises: Exception if multiple device trees are found in the folder and
+            activedt arg is None
+    """
+
+    activedtpath = None
+    searchpath = get_dt_search_path()
+
+    if activedt is not None:
+        activedtpath = searchpath + activedt
+    else:
+        for path in os.listdir(searchpath):
+            if (path.endswith(".dtb")):
+                if os.path.isfile(searchpath + path):
+                    if activedtpath is not None:
+                        raise Exception(
+                            "System has multiple device trees, please specify which one is active.")
+                    activedtpath = searchpath + path
+
+    if activedtpath is None:
+        return None
+
+    if not os.path.isfile(activedtpath):
+        return None
+
+    return activedtpath
+
+
+def validate_dtb(filename, activedt) -> bool:
+    """ Verifies that a compiled overlay is valid for the base device tree
+
+        Args:
+            filename (str) - path of overlay that needs to be validated
+            activedt (str) - currently active device tree (needed on imx7)
+
+        Returns:
+            bool: True for valid overlay
+
+        Raises:
+            Exception - No active device tree
+    """
+    global bootmnt
+
+    activedtpath = get_active_dt_path(activedt)
+
+    if activedtpath is None:
+        raise Exception("Could not find active device tree.")
+
+    if subprocess.run(["fdtoverlay", "-i", activedtpath, "-o", "/tmp/"+os.path.basename(activedtpath)+".tmp", filename]).returncode != 0:
+        return False
+
+    return True
+
+
+def get_overlays_file_path() -> str:
+    """ Returns the path where overlay configuration file and binary overlays are stored
+
+        Returns:
+            str - folder path (without final /)
+    """
+
+    global bootmnt
+
+    return bootmnt + "/overlays.txt"
+
+
+def get_active_overlays() -> typing.Tuple[typing.List[str], typing.List[str]]:
+    """ Returns a list of overlay file configuration (without overlays line) and currently active overlays
+
+        Returns:
+            Tuple[List,List] - list of overlay file rows (excluding overlays)
+                and list of str objects with overlay filenames
+    """
+
+    overlaysfilepath = get_overlays_file_path()
+
+    overlayslines = []
+    currentoverlays = []
+
+    if os.path.exists(overlaysfilepath):
+        with open(overlaysfilepath, "r") as f:
+            overlayslines = f.readlines()
+
+    for line in overlayslines:
+        if line.startswith("fdt_overlays="):
+            overlayslines.remove(line)
+            line = line[len("fdt_overlays="):].strip()
+            currentoverlays = line.split()
+
+    return overlayslines, currentoverlays
+
+
+def enable_overlay(overlay):
+    """ Applies overlays to boot configuration
+
+    Copy passed overlay files to boot partition and adds them to the list
+    of overlays that are loaded at boot
+
+    Args:
+        overlays (str) - overlay file name
+    """
+
+    if not os.path.exists(overlay):
+        raise Exception(overlay+" doesn't exists.")
+
+    shutil.copy(overlay, bootmnt)
+    overlayname = os.path.basename(overlay)
+
+    overlayslines, currentoverlays = get_active_overlays()
+
+    if overlayname not in currentoverlays:
+        currentoverlays.append(overlayname)
+    else:
+        logging.info("Overlay "+overlay+" is already enabled")
+        return
+
+    overlaysline = "fdt_overlays="
+
+    for currentoverlay in currentoverlays:
+        overlaysline += currentoverlay+" "
+
+    overlayslines.append(overlaysline.strip()+"\n")
+
+    with open(get_overlays_file_path(), "w") as f:
+        f.writelines(overlayslines)
+
+
+def disable_overlay(overlay):
+    """ Applies overlays to boot configuration
+
+    Remove an overlay from the list of those that are loaded at boot time
+
+    Args:
+        overlays (str) - overlay file name
+    """
+
+    if not os.path.exists(overlay):
+        raise Exception(overlay+" doesn't exists.")
+
+    overlayname = os.path.basename(overlay)
+
+    overlayslines = []
+    overlayslines, currentoverlays = get_active_overlays()
+
+    if overlayname not in currentoverlays:
+        logging.info("Overlay "+overlay+" is currently not enabled")
+        return
+
+    overlaysline = "fdt_overlays="
+
+    for currentoverlay in currentoverlays:
+        if overlayname != currentoverlay:
+            overlaysline += currentoverlay+" "
+
+    overlayslines.append(overlaysline.strip()+"\n")
+
+    with open(get_overlays_file_path(), "w") as f:
+        f.writelines(overlayslines)
+
+
+def disable_all_overlays():
+    """ Applies overlays to boot configuration
+
+    Remove all overlays that are configured at boot
+    """
+
+    overlayslines = get_active_overlays()[0]
+
+    with open(get_overlays_file_path(), "w") as f:
+        f.writelines(overlayslines)
+
+
+def activate_overlays(overlays, activedt):
+    """ Builds, validates and applies multiple overlays
+
+        Operation will stop if build/validation of one of the overlays fails
+
+        Args:
+            overlays (list) - list of dts files that should be used as overlays
+            activedt (str) - current device tree, in None it will be auto-detected
+    """
+
+    builtoverlays = []
+
+    for overlay in overlays:
+        logging.info("Building "+overlay)
+        outfile = build_dtb(overlay, None)
+        logging.info("Verifying "+overlay)
+
+        if not validate_dtb(outfile, activedt):
+            raise Exception("Invalid overlay")
+
+        logging.info("Overlay is valid.")
+        builtoverlays.append(outfile)
+
+    for builtoverlay in builtoverlays:
+        enable_overlay(builtoverlay)
+
+
+def dump_dtb(filename) -> str:
+    """ Dumps a dtb binary in dts-like format
+
+        The generated output may not be2020 valid dts, this function
+        can be used for debugging/validation only
+
+        Args:
+            filename(str) - path of dtb file
+
+        Returns:
+            dump of dtb contents in human-redable format
+    """
+
+    if not os.path.exists(filename):
+        raise Exception("Invalid filename")
+
+    fdtdumpprocess = subprocess.run(
+        ["dtc", "-I", "-O", "dts", filename], stdout=subprocess.PIPE)
+
+    if fdtdumpprocess.returncode != 0:
+        raise Exception("Error executing fdtdump")
+
+    return fdtdumpprocess.stdout.decode("utf-8")
+
+
+if __name__ == "__main__":
+
+    # configures logging: errors and warnings on stderr, regular messages on stdout
+    logger = logging.getLogger()
+
+    logger.setLevel(logging.INFO)
+
+    logstdout = logging.StreamHandler(sys.stdout)
+    logstdout.setLevel(logging.INFO)
+    logstdout.addFilter(lambda record: record.levelno <= logging.INFO)
+    logstdout.setFormatter(logging.Formatter("%(message)s"))
+
+    logstderr = logging.StreamHandler(sys.stderr)
+    logstderr.setLevel(logging.WARNING)
+    logstderr.setFormatter(logging.Formatter("%(message)s"))
+
+    logger.addHandler(logstdout)
+    logger.addHandler(logstderr)
+
+    # no arguments, print help
+    if len(sys.argv) <= 1:
+        usage()
+        sys.exit(0)
+
+    # initialization steps required fo all the different operations
+    if not init():
+        logging.error(
+            "Initialization failed.")
+        sys.exit(-1)
+
+    # perform operations, depending on the command required
+    cmd = sys.argv[1]
+
+    if len(sys.argv) > 2:
+        args = sys.argv[2:]
+    else:
+        args = []
+
+    try:
+        if cmd == "-h" or cmd == "--help":
+            long_usage()
+
+        elif cmd == "-s" or cmd == "--status":
+            currentoverlays = get_active_overlays()[1]
+            if len(currentoverlays) > 0:
+                print("Currently active overlays:")
+                for overlay in currentoverlays:
+                    print(overlay)
+            else:
+                print("No active overlays")
+
+            print("Available device trees:")
+
+            searchpath = get_dt_search_path()
+
+            for path in os.listdir(searchpath):
+                if (path.endswith(".dtb")):
+                    if os.path.isfile(searchpath + path):
+                        print(path)
+
+        elif cmd == "-p" or cmd == "--print":
+            if len(args) == 0:
+                raise Exception("No file name specified.")
+
+            for dtbfile in args:
+                logging.info(dump_dtb(dtbfile))
+
+        elif cmd == "-a" or cmd == "--activate":
+            if len(args) == 0:
+                raise Exception("No file name specified.")
+
+            filenames = []
+            dtname = None
+
+            nextisdt = False
+
+            for arg in args:
+
+                if nextisdt:
+                    dtname = arg
+                else:
+                    if arg == "-c":
+                        nextisdt = True
+                    else:
+                        filenames.append(arg)
+
+            if nextisdt and dtname is None:
+                raise Exception(
+                    "A valid device-tree filename must be specified for -c parameter")
+
+            activate_overlays(filenames, dtname)
+            logging.info(
+                "A reboot is necessary for changes to take effect")
+
+        elif cmd == "-b" or cmd == "--build":
+            if len(args) == 0:
+                raise Exception("No file name specified")
+
+            for dtsfile in args:
+                overlayfilename = build_dtb(dtsfile, None)
+                logging.info("Overlay file "+overlayfilename +
+                             " has been generated")
+
+        elif cmd == "-e" or cmd == "--enable":
+            if len(args) == 0:
+                raise Exception("No file name specified")
+
+            for dtbfile in args:
+                enable_overlay(dtbfile)
+                logging.info("Overlay file "+dtbfile +
+                             " has been enabled")
+            logging.info(
+                "A reboot is necessary for changes to take effect")
+
+        elif cmd == "-d" or cmd == "--disable":
+            if len(args) == 0:
+                raise Exception("No file name specified")
+
+            for dtbfile in args:
+                if dtbfile == "all":
+                    disable_all_overlays()
+                else:
+                    disable_overlay(dtbfile)
+
+                logging.info("Overlay file "+dtbfile +
+                             " has been disabled")
+            logging.info(
+                "A reboot is necessary for changes to take effect")
+
+        elif cmd == "-v" or cmd == "--verify":
+            filenames = []
+            dtname = None
+
+            nextisdt = False
+
+            for arg in args:
+
+                if nextisdt:
+                    dtname = arg
+                else:
+                    if arg == "-c":
+                        nextisdt = True
+                    else:
+                        filenames.append(arg)
+
+                if nextisdt and dtname is None:
+                    raise Exception(
+                        "A valid device-tree filename must be specified for -c parameter")
+
+            for dtofile in filenames:
+                validate_dtb(dtofile, dtname)
+                logging.info("Overlay file "+dtofile+" has been validated")
+
+        else:
+            raise Exception("Invalid command line argument "+arg)
+
+    except Exception as e:
+        logging.error(str(e))
+        sys.exit(-1)
