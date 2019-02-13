@@ -316,9 +316,6 @@ def disable_overlay(overlay):
         overlays (str) - overlay file name
     """
 
-    if not os.path.exists(overlay):
-        raise Exception(overlay+" doesn't exists.")
-
     overlayname = os.path.basename(overlay)
 
     overlayslines = []
@@ -396,7 +393,7 @@ def dump_dtb(filename) -> str:
         raise Exception("Invalid filename")
 
     fdtdumpprocess = subprocess.run(
-        ["dtc", "-I", "-O", "dts", filename], stdout=subprocess.PIPE)
+        ["dtc", "-I", "dtb", "-O", "dts", filename], stdout=subprocess.PIPE)
 
     if fdtdumpprocess.returncode != 0:
         raise Exception("Error executing fdtdump")
