@@ -15,7 +15,6 @@ colibriimx7nandids = ["0032", "0033"]
 colibriimx7emmcids = ["0039"]
 
 product_id = None
-mmcblkboot = None
 bootpart = None
 
 bootmnt = "/mnt/part"
@@ -64,7 +63,6 @@ def init() -> bool:
     """
 
     global product_id
-    global mmcblkboot
     global bootpart
 
     # TODO: add support for NAND-based imx7 and ULL
@@ -74,15 +72,10 @@ def init() -> bool:
 
     product_id = product_id[:-1]
 
-    if product_id in colibriimx7emmcids:
-        mmcblkboot = "mmcblk1boot"
-        bootpart = "/dev/mmcblk1p1"
-    elif product_id in colibriimx6ids:
-        mmcblkboot = "mmcblk1boot0"
-        bootpart = "/dev/mmcblk1p1"
-    elif product_id in apalisimx6pids:
-        mmcblkboot = "mmcblk2boot0"
-        bootpart = "/dev/mmcblk2p1"
+    if (product_id in colibriimx7emmcids) or \
+       (product_id in colibriimx6ids) or \
+       (product_id in apalisimx6pids):
+        bootpart = "/dev/disk/by-label/BOOT"
     else:
         product_id = None
 
@@ -90,9 +83,6 @@ def init() -> bool:
         logging.error(
             "Unknown device (check that container is running in privileged mode and with the suggested command line parameters).")
         return False
-
-    with open("/etc/fw_env.config", "w") as f:
-        f.write("/dev/"+mmcblkboot+"       -0x2200    0x2000")
 
     if not os.path.ismount(bootmnt):
         logging.info("Mounting "+bootmnt)
