@@ -6,4 +6,5 @@ setup(
     author="Valter Minute",
     author_email="valter.minute@toradex.com",
     scripts=["dtconf"],
+    install_requires=["gitpython"]
 )
