@@ -1,0 +1,3 @@
+# add python packages that you want to be installed to run your application
+setuptools
+gitpython
