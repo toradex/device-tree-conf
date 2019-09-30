@@ -320,7 +320,7 @@ class DTConf:
                                          description="\tdisable binary device tree overlays")
 
         parser.add_argument("filename", help="dtb file(s) to be disabled", action="store",
-                            nargs="+", type=str)
+                            nargs="*", type=str)
         parser.add_argument("--all", help="disables all overlay", action="store_true",
                             default=False)
         return parser
