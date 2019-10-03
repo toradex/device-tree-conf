@@ -29,6 +29,60 @@ class DTConf:
         ("apalis imx8", ["0037", "0047", "0048", "0049", "0046"]),
         ("colibri imx8", ["0038", "0050", "0051", "0052"])
     ]
+    errormessages = {
+       1: "FDT_ERR_NOTFOUND: The requested node or property does not exist.",
+       2: "FDT_ERR_EXISTS: Attempted to create a node or property which"
+          "already exists.",
+       3: "FDT_ERR_NOSPACE: Operation needed to expand the device "
+          "tree, but its buffer did not have sufficient space to "
+          "contain the expanded tree. Use fdt_open_into ) to move the "
+          "device tree to a buffer with more space.",
+       4: "FDT_ERR_BADOFFSET: Function was passed a structure block "
+          "offset which is out-of-bounds, or which points to an "
+          "unsuitable part of the structure for the operation.",
+       5: "FDT_ERR_BADPATH: Function was passed a badly formatted path "
+          " e.g. missing a leading / for a function which requires an "
+          "absolute path).",
+       6: "FDT_ERR_BADPHANDLE: Function was passed an invalid phandle.\n"
+          "This can be caused either by an invalid phandle property "
+          "length, or the phandle value was either 0 or -1, which are "
+          "not permitted.",
+       7: "FDT_ERR_BADSTATE: Function was passed an incomplete device "
+          "tree created by the sequential-write functions, which is "
+          "not sufficiently complete for the requested operation.",
+       8: "FDT_ERR_TRUNCATED: FDT or a sub-block is improperly "
+          "terminated overflows, goes outside allowed bounds, or "
+          "isn't properly terminated).",
+       9: "FDT_ERR_BADMAGIC: Given \"device tree\" appears not to be a "
+          "device tree at all - it is missing the flattened device "
+          "tree magic number.",
+      10: "FDT_ERR_BADVERSION: Given device tree has a version which "
+          "can't be handled by the requested operation.  For "
+          "read-write functions, this may mean that fdt_open_into ) is "
+          "required to convert the tree to the expected version.",
+      11: "FDT_ERR_BADSTRUCTURE: Given device tree has a corrupt "
+          "structure block or other serious error e.g. misnested "
+          "nodes, or subnodes preceding properties).",
+      12: "FDT_ERR_BADLAYOUT: For read-write functions, the given "
+          "device tree has it's sub-blocks in an order that the "
+          "function can't handle memory reserve map, then structure, "
+          "then strings).  Use fdt_open_into ) to reorganize the tree "
+          "into a form suitable for the read-write operations.",
+      13: "FDT_ERR_INTERNAL: libfdt has failed an internal assertion. "
+          "Should never be returned, if it is, it indicates a bug in "
+          "libfdt itself.",
+      14: "FDT_ERR_BADNCELLS: Device tree has a  #address-cells, #size-cells "
+            "or similar property with a bad format or value",
+      15: "FDT_ERR_BADVALUE: Device tree has a property with an unexpected "
+          "value. For example: a property expected to contain a string list "
+            "is not NUL-terminated within the length of its value.",
+      16: "FDT_ERR_BADOVERLAY: The device tree overlay, while "
+          "correctly structured, cannot be applied due to some "
+            "unexpected or missing value, property or node.",
+      17: "FDT_ERR_NOPHANDLES: The device tree doesn't have any "
+            "phandle available anymore without causing an overflow.",
+      18: "FDT_ERR_BADFLAGS: The function was passed a flags field that "
+          "contains invalid flags or an invalid combination of flags." }
 
     def __init__(self):
         """ Basic initialization
@@ -50,7 +104,7 @@ class DTConf:
         logstdout.addFilter(lambda record: record.levelno <= logging.INFO)
         logstdout.setFormatter(logging.Formatter("%(message)s"))
 
-        logstderr = logging.StreamHandler(sys.stderr)
+        logstderr=logging.StreamHandler(sys.stderr)
         logstderr.setLevel(logging.WARNING)
         logstderr.setFormatter(logging.Formatter("%(message)s"))
 
@@ -75,7 +129,7 @@ class DTConf:
         else:
             for command in DTConf.commands:
                 logging.info("\ncommand: "+command+"\n")
-                parser = getattr(self, command+"_createparser")()
+                parser=getattr(self, command+"_createparser")()
                 parser.print_help()
 
     def setup(self) -> bool:
@@ -84,17 +138,17 @@ class DTConf:
             It must be called before any other function call from this module
         """
 
-        bootpart = "/dev/disk/by-label/BOOT"
+        bootpart="/dev/disk/by-label/BOOT"
 
         with open("/proc/device-tree/toradex,product-id", "r") as f:
-            productstr = f.readline()
+            productstr=f.readline()
 
-        productstr = productstr[:-1]
+        productstr=productstr[:-1]
 
         for product in DTConf.products:
             for productid in product[1]:
                 if productid == productstr:
-                    self.product_id = productid
+                    self.product_id=productid
                     logging.info(
                         "Device is "+product[0]+"("+self.product_id+")")
                     break
@@ -129,35 +183,35 @@ class DTConf:
 
     def process_repo_args(self, args):
         if args.norepo == True:
-            self.userepo = False
+            self.userepo=False
         else:
-            self.gitrepo = args.gitrepo
-            self.dogitpull = args.dopull
+            self.gitrepo=args.gitrepo
+            self.dogitpull=args.dopull
 
     def git_checkout(self):
-        repo = git.Repo(path=self.gitrepo)
+        repo=git.Repo(path=self.gitrepo)
 
         if repo.bare:
             raise Exception("git repo seem to be empty.")
 
         # try to find a branch matching current kernel version
-        uname = subprocess.run(
+        uname=subprocess.run(
             ["uname", "-r"], stdout=subprocess.PIPE)
 
         if uname.returncode != 0:
             raise Exception("Error executing uname")
 
-        kernelversion = uname.stdout.decode("utf-8")
+        kernelversion=uname.stdout.decode("utf-8")
 
-        kernelmaj, kernelmin = kernelversion.split(".")[0:2]
+        kernelmaj, kernelmin=kernelversion.split(".")[0:2]
 
-        headname = "toradex_"+kernelmaj+"."+kernelmin+".y"
+        headname="toradex_"+kernelmaj+"."+kernelmin+".y"
 
         # update repo
         if self.dogitpull:
             repo.remote("origin").pull()
 
-        head = next((h for h in repo.branches if h.name == headname), None)
+        head=next((h for h in repo.branches if h.name == headname), None)
 
         if head is None:
             raise Exception(
@@ -167,7 +221,7 @@ class DTConf:
 
     def status_createparser(self) -> argparse.ArgumentParser:
 
-        parser = argparse.ArgumentParser(prog="dtconf status",
+        parser=argparse.ArgumentParser(prog="dtconf status",
                                          description="\tshow current state of device trees and overlays.")
 
         self.add_repo_parms(parser)
@@ -176,15 +230,15 @@ class DTConf:
 
     def status(self, sysargs) -> int:
 
-        parser = self.status_createparser()
+        parser=self.status_createparser()
 
-        args = parser.parse_args(sysargs)
+        args=parser.parse_args(sysargs)
 
         self.process_repo_args(args)
 
         self.setup()
 
-        currentoverlays = self.get_active_overlays()[1]
+        currentoverlays=self.get_active_overlays()[1]
         if len(currentoverlays) > 0:
             logging.info("Currently active overlays:")
             for overlay in currentoverlays:
@@ -194,7 +248,7 @@ class DTConf:
 
         logging.info("Available base device trees:")
 
-        searchpath = self.get_dt_search_path()
+        searchpath=self.get_dt_search_path()
 
         for path in os.listdir(searchpath):
             if (path.endswith(".dtb")):
@@ -208,7 +262,7 @@ class DTConf:
 
         logging.info("Available overlays for running kernel:")
 
-        overlayspath = os.path.join(self.gitrepo, "overlays")
+        overlayspath=os.path.join(self.gitrepo, "overlays")
 
         for path in os.listdir(overlayspath):
             if (path.endswith(".dts")):
@@ -219,7 +273,7 @@ class DTConf:
 
     def build_createparser(self) -> argparse.ArgumentParser:
 
-        parser = argparse.ArgumentParser(prog="dtconf build",
+        parser=argparse.ArgumentParser(prog="dtconf build",
                                          description="compiles device tree overlays from source (dts) to binary (dtb) format.")
 
         self.add_repo_parms(parser)
@@ -233,9 +287,9 @@ class DTConf:
 
     def build(self, sysargs) -> int:
 
-        parser = self.build_createparser()
+        parser=self.build_createparser()
 
-        args = parser.parse_args(sysargs)
+        args=parser.parse_args(sysargs)
 
         self.process_repo_args(args)
 
@@ -245,11 +299,11 @@ class DTConf:
             self.git_checkout()
 
         for overlay in args.filename:
-            overlaypath = overlay
+            overlaypath=overlay
 
             if self.userepo:
-                overlaypath = os.path.join(self.gitrepo, "overlays")
-                overlaypath = os.path.join(overlaypath, overlay)
+                overlaypath=os.path.join(self.gitrepo, "overlays")
+                overlaypath=os.path.join(overlaypath, overlay)
 
             self.build_dtb(overlaypath, args.outputpath)
 
@@ -257,7 +311,7 @@ class DTConf:
 
     def validate_createparser(self) -> argparse.ArgumentParser:
 
-        parser = argparse.ArgumentParser(prog="dtconf validate",
+        parser=argparse.ArgumentParser(prog="dtconf validate",
                                          description="\tvalidate binary device tree overlays.")
 
         parser.add_argument("filename", help="dtb file(s) to be validated", action="store",
@@ -269,24 +323,20 @@ class DTConf:
 
     def validate(self, sysargs) -> int:
 
-        retval = 0
+        retval=0
 
-        parser = self.validate_createparser()
+        parser=self.validate_createparser()
 
-        args = parser.parse_args(sysargs)
+        args=parser.parse_args(sysargs)
 
         self.setup()
 
         for overlay in args.filename:
-            overlaypath = overlay
-
-            if self.userepo:
-                overlaypath = os.path.join(self.gitrepo, "overlays")
-                overlaypath = os.path.join(overlaypath, overlay)
+            overlaypath=overlay
 
             if not self.validate_dtb(overlaypath, args.currentdevicetree):
                 logging.error("Validation of "+overlay+" failed.")
-                retval = 1
+                retval=1
             else:
                 logging.info("Validation of "+overlay+" completed.")
 
@@ -294,7 +344,7 @@ class DTConf:
 
     def enable_createparser(self) -> argparse.ArgumentParser:
 
-        parser = argparse.ArgumentParser(prog="dtconf enable",
+        parser=argparse.ArgumentParser(prog="dtconf enable",
                                          description="\tenable a binary device tree overlay.")
 
         parser.add_argument("filename", help="dtb file(s) to be enabled", action="store",
@@ -304,9 +354,9 @@ class DTConf:
 
     def enable(self, sysargs) -> int:
 
-        parser = self.enable_createparser()
+        parser=self.enable_createparser()
 
-        args = parser.parse_args(sysargs)
+        args=parser.parse_args(sysargs)
 
         self.setup()
 
@@ -316,7 +366,7 @@ class DTConf:
 
     def disable_createparser(self) -> argparse.ArgumentParser:
 
-        parser = argparse.ArgumentParser(prog="dtconf disable",
+        parser=argparse.ArgumentParser(prog="dtconf disable",
                                          description="\tdisable binary device tree overlays")
 
         parser.add_argument("filename", help="dtb file(s) to be disabled", action="store",
@@ -327,9 +377,9 @@ class DTConf:
 
     def disable(self, sysargs) -> int:
 
-        parser = self.disable_createparser()
+        parser=self.disable_createparser()
 
-        args = parser.parse_args(sysargs)
+        args=parser.parse_args(sysargs)
 
         self.setup()
 
@@ -343,8 +393,10 @@ class DTConf:
                 logging.info("Overlay file " + overlay + " has been disabled")
 
     def activate_createparser(self) -> argparse.ArgumentParser:
-        parser = argparse.ArgumentParser(prog="dtconf activate",
+        parser=argparse.ArgumentParser(prog="dtconf activate",
                                          description='Build, validate and enable a source device tree overlay (dts).')
+
+        self.add_repo_parms(parser)
 
         parser.add_argument("filename", help="dts file(s) to be validated", action="store",
                             nargs="+", type=str)
@@ -355,17 +407,22 @@ class DTConf:
 
     def activate(self, sysargs) -> int:
 
-        parser = self.activate_createparser()
+        parser=self.activate_createparser()
 
-        args = parser.parse_args(sysargs)
+        args=parser.parse_args(sysargs)
+
+        self.process_repo_args(args)
 
         self.setup()
+
+        if self.userepo:
+            self.git_checkout()
 
         self.activate_overlays(args.filename, args.currentdevicetree)
 
     def print_createparser(self) -> argparse.ArgumentParser:
 
-        parser = argparse.ArgumentParser(prog="dtconf print",
+        parser=argparse.ArgumentParser(prog="dtconf print",
                                          description='Dumps binary device-tree overlays in human readable format.')
 
         parser.add_argument("filename", help="dtb file(s) to be dumped", action="store",
@@ -378,16 +435,16 @@ class DTConf:
 
     def print(self, sysargs) -> int:
 
-        parser = self.print_createparser()
+        parser=self.print_createparser()
 
-        args = parser.parse_args(sysargs)
+        args=parser.parse_args(sysargs)
 
         self.setup()
 
         for overlay in args.filename:
 
             if not os.path.isfile(overlay):
-                overlay = os.path.join(self.get_dt_search_path(), overlay)
+                overlay=os.path.join(self.get_dt_search_path(), overlay)
 
             if not args.bare:
                 logging.info("++ Dumping: " + overlay)
@@ -415,22 +472,22 @@ class DTConf:
         if not os.path.isfile(filename):
             raise Exception("Invalid filename")
 
-        ext = ".dtb"
+        ext=".dtb"
 
         with open(filename, "r") as f:
             for line in f:
                 if "fragment@0" in line:
-                    ext = ".dtbo"
+                    ext=".dtbo"
                     break
 
         if outputpath is None:
-            outputpath = "./"+os.path.basename(filename)+ext
+            outputpath="./"+os.path.basename(filename)+ext
 
         if os.path.isdir(outputpath):
-            outputpath = os.path.join(
+            outputpath=os.path.join(
                 outputpath, os.path.basename(filename)+ext)
 
-        dtcprocess = subprocess.run(
+        dtcprocess=subprocess.run(
             ["dtc", "-@", "-I", "dts", "-O", "dtb", "-o", outputpath, filename], stderr=subprocess.PIPE)
 
         if dtcprocess.returncode != 0:
@@ -449,17 +506,17 @@ class DTConf:
             Returns:
                 str - folder path (with final /)
         """
-        searchpath = None
+        searchpath=None
 
         with open("/boot/loader/uEnv.txt", "r") as f:
             for line in f:
                 if line.startswith("fdt_path="):
-                    searchpath = line[len("fdt_path="):]
-                    searchpath = searchpath.rstrip()
+                    searchpath=line[len("fdt_path="):]
+                    searchpath=searchpath.rstrip()
                     break
 
         if searchpath is not None:
-            searchpath = "/boot"+searchpath
+            searchpath="/boot"+searchpath
 
         return searchpath
 
@@ -476,41 +533,41 @@ class DTConf:
                 activedt arg is None
         """
 
-        activedtpath = None
-        searchpath = self.get_dt_search_path()
+        activedtpath=None
+        searchpath=self.get_dt_search_path()
 
         if activedt is not None:
-            activedtpath = searchpath + activedt
+            activedtpath=searchpath + activedt
         else:
 
             with open('/proc/device-tree/model', 'r') as f:
-                model = f.read()
+                model=f.read()
 
             # remove terminating null
-            model = model[:len(model)-1]
+            model=model[:len(model)-1]
 
             for path in os.listdir(searchpath):
                 if (path.endswith(".dtb")):
 
-                    dtbpath = searchpath + path
+                    dtbpath=searchpath + path
                     if os.path.isfile(dtbpath):
 
-                        dtbdump = self.dump_dtb(dtbpath)
+                        dtbdump=self.dump_dtb(dtbpath)
 
-                        tag = "model = "
+                        tag="model = "
 
-                        index = dtbdump.find(tag)
+                        index=dtbdump.find(tag)
 
                         if index == -1:
                             continue
 
-                        modelstr = dtbdump[index+len(tag)+1:]
-                        modelstr = modelstr[:modelstr.find('"')]
-                        modelstr = modelstr.replace("\\0", "\x00")
+                        modelstr=dtbdump[index+len(tag)+1:]
+                        modelstr=modelstr[:modelstr.find('"')]
+                        modelstr=modelstr.replace("\\0", "\x00")
 
                         if model == modelstr:
                             if activedtpath is None:
-                                activedtpath = dtbpath
+                                activedtpath=dtbpath
                             else:
                                 raise Exception(
                                     "Multiple device trees have the same model string, please select one with the -c command line parameter.")
@@ -534,16 +591,21 @@ class DTConf:
             Raises:
                 Exception - No active device tree
         """
-        activedtpath = self.get_active_dt_path(activedt)
+        activedtpath=self.get_active_dt_path(activedt)
 
         if activedtpath is None:
             raise Exception("Could not find active device tree.")
 
-        fdtoverlay = subprocess.run(["fdtoverlay", "-i", activedtpath, "-o", "/tmp/" +
+        fdtoverlay=subprocess.run(["fdtoverlay", "-i", activedtpath, "-o", "/tmp/" +
                                      os.path.basename(activedtpath)+".tmp", filename], stderr=subprocess.PIPE)
 
         if fdtoverlay.returncode != 0:
-            logging.error(fdtoverlay.stderr.decode("utf-8"))
+            errormessage = "Error running fdtdump."
+            if fdtoverlay.returncode in DTConf.errormessages:
+                errormessage += "\n" + \
+                    DTConf.errormessages[fdtoverlay.returncode]
+            errormessage += fdtoverlay.stderr.decode("utf-8")
+            logging.error(errormessage)
             return False
 
         return True
@@ -565,20 +627,20 @@ class DTConf:
                     and list of str objects with overlay filenames
         """
 
-        overlaysfilepath = self.get_overlays_file_path()
+        overlaysfilepath=self.get_overlays_file_path()
 
-        overlayslines = []
-        currentoverlays = []
+        overlayslines=[]
+        currentoverlays=[]
 
         if os.path.exists(overlaysfilepath):
             with open(overlaysfilepath, "r") as f:
-                overlayslines = f.readlines()
+                overlayslines=f.readlines()
 
         for line in overlayslines:
             if line.startswith("fdt_overlays="):
                 overlayslines.remove(line)
-                line = line[len("fdt_overlays="):].strip()
-                currentoverlays = line.split()
+                line=line[len("fdt_overlays="):].strip()
+                currentoverlays=line.split()
 
         return overlayslines, currentoverlays
 
@@ -596,9 +658,9 @@ class DTConf:
             raise Exception(overlay+" doesn't exists.")
 
         shutil.copy(overlay, self.bootmnt)
-        overlayname = os.path.basename(overlay)
+        overlayname=os.path.basename(overlay)
 
-        overlayslines, currentoverlays = self.get_active_overlays()
+        overlayslines, currentoverlays=self.get_active_overlays()
 
         if overlayname not in currentoverlays:
             currentoverlays.append(overlayname)
@@ -606,7 +668,7 @@ class DTConf:
             logging.info("Overlay "+overlay+" is already enabled")
             return
 
-        overlaysline = "fdt_overlays="
+        overlaysline="fdt_overlays="
 
         for currentoverlay in currentoverlays:
             overlaysline += currentoverlay+" "
@@ -625,16 +687,16 @@ class DTConf:
             overlays (str) - overlay file name
         """
 
-        overlayname = os.path.basename(overlay)
+        overlayname=os.path.basename(overlay)
 
-        overlayslines = []
-        overlayslines, currentoverlays = self.get_active_overlays()
+        overlayslines=[]
+        overlayslines, currentoverlays=self.get_active_overlays()
 
         if overlayname not in currentoverlays:
             logging.info("Overlay "+overlay+" is currently not enabled")
             return
 
-        overlaysline = "fdt_overlays="
+        overlaysline="fdt_overlays="
 
         for currentoverlay in currentoverlays:
             if overlayname != currentoverlay:
@@ -651,7 +713,7 @@ class DTConf:
         Remove all overlays that are configured at boot
         """
 
-        overlayslines = self.get_active_overlays()[0]
+        overlayslines=self.get_active_overlays()[0]
 
         with open(self.get_overlays_file_path(), "w") as f:
             f.writelines(overlayslines)
@@ -666,19 +728,19 @@ class DTConf:
                 activedt (str) - current device tree, in None it will be auto-detected
         """
 
-        builtoverlays = []
+        builtoverlays=[]
 
         for overlay in overlays:
 
-            overlaypath = overlay
+            overlaypath=overlay
 
             if self.userepo:
-                overlaypath = os.path.join(self.gitrepo, "overlays")
-                overlaypath = os.path.join(overlaypath, overlay)
+                overlaypath=os.path.join(self.gitrepo, "overlays")
+                overlaypath=os.path.join(overlaypath, overlay)
 
             logging.info("Building "+overlay)
-            outfile = self.build_dtb(overlaypath, None)
-            logging.info("Validating "+overlay)
+            outfile=self.build_dtb(overlaypath, None)
+            logging.info("Validating "+outfile)
 
             if not self.validate_dtb(outfile, activedt):
                 raise Exception("Invalid overlay")
@@ -705,11 +767,16 @@ class DTConf:
         if not os.path.exists(filename):
             raise Exception("Invalid filename")
 
-        fdtdumpprocess = subprocess.run(
-            ["dtc", "-I", "dtb", "-O", "dts", "-q", filename], stdout=subprocess.PIPE)
+        fdtdumpprocess=subprocess.run(
+            ["dtc", "-I", "dtb", "-O", "dts", "-q", filename],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         if fdtdumpprocess.returncode != 0:
-            raise Exception("Error executing fdtdump")
+            errormessage = "Error running fdtdump."
+            if fdtdumpprocess.returncode in DTConf.errormessages:
+                errormessage += "\n"+DTConf.errormessages[fdtdumpprocess.returncode]
+            errormessage+=fdtdumpprocess.stderr.decode("utf-8")
+            raise Exception(errormessage)
 
         return fdtdumpprocess.stdout.decode("utf-8")
 
@@ -722,12 +789,12 @@ class DTConf:
             return 0
 
         # command line args
-        parser = argparse.ArgumentParser(
+        parser=argparse.ArgumentParser(
             description="Device tree overlays tool", usage="dtconf <command> [<args>]")
 
         parser.add_argument("command", help="subcommand to run")
 
-        args = parser.parse_args(sys.argv[1:2])
+        args=parser.parse_args(sys.argv[1:2])
 
         if args.command == "help":
             self.help(False)
@@ -745,122 +812,10 @@ class DTConf:
 if __name__ == "__main__":
 
     try:
-        dtconf = DTConf()
+        dtconf=DTConf()
 
         sys.exit(dtconf.run(sys.argv))
 
     except Exception as e:
         logging.error(str(e))
         sys.exit(-1)
-
-    # initialization steps required fo all the different operations
-
-    # if not init():
-    #     logging.error(
-    #         "Initialization failed.")
-    #     sys.exit(-1)
-
-    # # perform operations, depending on the command required
-    # cmd = sys.argv[1]
-
-    # if len(sys.argv) > 2:
-    #     args = sys.argv[2:]
-    # else:
-    #     args = []
-
-    # try:
-    #     if cmd == "-h" or cmd == "--help":
-    #         long_usage()
-
-    #     elif cmd == "-s" or cmd == "--status":
-
-    #     elif cmd == "-p" or cmd == "--print":
-    #         if len(args) == 0:
-    #             raise Exception("No file name specified.")
-
-    #         for dtbfile in args:
-    #             logging.info(dump_dtb(dtbfile))
-
-    #     elif cmd == "-a" or cmd == "--activate":
-    #         if len(args) == 0:
-    #             raise Exception("No file name specified.")
-
-    #         filenames = []
-    #         dtname = None
-
-    #         nextisdt = False
-
-    #         for arg in args:
-
-    #             if nextisdt:
-    #                 dtname = arg
-    #             else:
-    #                 if arg == "-c":
-    #                     nextisdt = True
-    #                 else:
-    #                     filenames.append(arg)
-
-    #         if nextisdt and dtname is None:
-    #             raise Exception(
-    #                 "A valid device-tree filename must be specified for -c parameter")
-
-    #         activate_overlays(filenames, dtname)
-    #         logging.info(
-    #             "A reboot is necessary for changes to take effect")
-
-    #     elif cmd == "-b" or cmd == "--build":
-    #         if len(args) == 0:
-    #             raise Exception("No file name specified")
-
-    #     elif cmd == "-e" or cmd == "--enable":
-    #         if len(args) == 0:
-    #             raise Exception("No file name specified")
-
-    #         for dtbfile in args:
-    #             enable_overlay(dtbfile)
-    #             logging.info("Overlay file "+dtbfile +
-    #                          " has been enabled")
-    #         logging.info(
-    #             "A reboot is necessary for changes to take effect")
-
-    #     elif cmd == "-d" or cmd == "--disable":
-    #         if len(args) == 0:
-    #             raise Exception("No file name specified")
-
-    #         for dtbfile in args:
-    #             if dtbfile == "all":
-    #                 disable_all_overlays()
-    #             else:
-    #                 disable_overlay(dtbfile)
-
-    #             logging.info("Overlay file "+dtbfile +
-    #                          " has been disabled")
-    #         logging.info(
-    #             "A reboot is necessary for changes to take effect")
-
-    #     elif cmd == "-v" or cmd == "--verify":
-    #         filenames = []
-    #         dtname = None
-
-    #         nextisdt = False
-
-    #         for arg in args:
-
-    #             if nextisdt:
-    #                 dtname = arg
-    #             else:
-    #                 if arg == "-c":
-    #                     nextisdt = True
-    #                 else:
-    #                     filenames.append(arg)
-
-    #             if nextisdt and dtname is None:
-    #                 raise Exception(
-    #                     "A valid device-tree filename must be specified for -c parameter")
-
-    #         for dtofile in filenames:
-    #             validate_dtb(dtofile, dtname)
-    #             logging.info("Overlay file "+dtofile+" has been validated")
-
-    #     else:
-    #         raise Exception("Invalid command line argument "+arg)
