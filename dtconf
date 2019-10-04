@@ -10,6 +10,7 @@ import logging
 import typing
 import argparse
 import git
+from pyfdt.pyfdt import *
 
 
 class DTConf:
@@ -426,10 +427,16 @@ class DTConf:
                                          description='Dumps binary device-tree overlays in human readable format.')
 
         parser.add_argument("filename", help="dtb file(s) to be dumped", action="store",
-                            nargs="+", type=str)
+                            nargs="*", type=str)
 
-        parser.add_argument("-b", "--bare-format", help="currently active device tree",
+        parser.add_argument("-b", "--bare-format", help="Don't add any message to the output",
                             dest="bare", action="store_true", default=False)
+
+        parser.add_argument("-n", "--nodes", help="dumps list of nodes",
+                            dest="nodes", action="store_true", default=False)
+
+        parser.add_argument("-a", "--active-device-tree", help="dumps active device tree from procfs",
+                            dest="active", action="store_true", default=False)
 
         return parser
 
@@ -441,15 +448,23 @@ class DTConf:
 
         self.setup()
 
-        for overlay in args.filename:
+        if args.active:
+                if not args.bare:
+                    logging.info("** Dumping current device tree")
+                logging.info(self.dump_current_dtb())
+        else:
+            for overlay in args.filename:
 
-            if not os.path.isfile(overlay):
-                overlay=os.path.join(self.get_dt_search_path(), overlay)
+                if not os.path.isfile(overlay):
+                    overlay=os.path.join(self.get_dt_search_path(), overlay)
 
-            if not args.bare:
-                logging.info("++ Dumping: " + overlay)
+                if not args.bare:
+                    logging.info("** Dumping: " + overlay)
 
-            logging.info(self.dump_dtb(overlay))
+                if args.nodes:
+                    logging.info(self.dump_dtb_nodes(overlay))
+                else:
+                    logging.info(self.dump_dtb(overlay))
 
         return 0
 
@@ -754,7 +769,7 @@ class DTConf:
     def dump_dtb(self, filename) -> str:
         """ Dumps a dtb binary in dts-like format
 
-            The generated output may not be2020 valid dts, this function
+            The generated output may not be a valid dts, this function
             can be used for debugging/validation only
 
             Args:
@@ -779,6 +794,69 @@ class DTConf:
             raise Exception(errormessage)
 
         return fdtdumpprocess.stdout.decode("utf-8")
+
+    def _dump_node(self,rootnode,level,nodelist) -> str:
+        """[summary]
+
+        Arguments:
+            rootnode {FdtNode} -- Node to be dumped
+            level {int} -- Recursion level
+            nodelist {list} -- list of nodes already dumped (to avoid loops)
+
+        Returns:
+            str -- [description]
+        """
+
+        nodedump=""
+        ident=' ' * level
+        nodelist.append(rootnode)
+
+        nodedump += ident+"+"+rootnode.name+"\n"
+
+        for (path, node) in rootnode.walk():
+            if isinstance(node,FdtNode):
+                if not node in nodelist:
+                    nodedump+=self._dump_node(node,level+1,nodelist)
+            elif isinstance(node, FdtPropertyStrings):
+                separator=","
+                nodedump += ident+" -"+node.name + \
+                    "=(s)"+separator.join(node.strings)+"\n"
+            elif isinstance(node, FdtPropertyBytes):
+                separator = ","
+                nodedump += ident+" -"+node.name+"=(b)" + \
+                    separator.join(map(hex, node.bytes))+"\n"
+            elif isinstance(node, FdtPropertyWords):
+                separator=","
+                nodedump += ident+" -"+node.name+"=(w)" + \
+                    separator.join(map(hex, node.words))+"\n"
+
+        return nodedump
+
+    def dump_dtb_nodes(self,overlay) -> str:
+        """ Dumps a node list for a dtb
+
+            Args:
+                filename(str) - path of dtb file
+
+            Returns:
+                dump of dtb contents in human-redable format
+        """
+        with open(overlay,"rb") as f:
+            dtb = FdtBlobParse(f)
+
+        fdt = dtb.to_fdt()
+
+        return self._dump_node(fdt.resolve_path("/"),0,[])
+
+    def dump_current_dtb(self) -> str:
+        """ Dumps a node list for the current dtb
+
+            Returns:
+                dump of dtb contents in human-redable format
+        """
+        fdt = FdtFsParse("/proc/device-tree")
+
+        return self._dump_node(fdt.resolve_path("/"),0,[])
 
     def run(self, args) -> int:
         """ Processes command line arguments and return an exit code
