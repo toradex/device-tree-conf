@@ -299,6 +299,12 @@ class DTConf:
         if self.userepo:
             self.git_checkout()
 
+        includepaths = []
+
+        if self.userepo:
+            includepaths.append(os.path.join(self.gitrepo, "include"))
+            includepaths.append(os.path.join(self.gitrepo, "dts-arm32"))
+
         for overlay in args.filename:
             overlaypath=overlay
 
@@ -306,7 +312,7 @@ class DTConf:
                 overlaypath=os.path.join(self.gitrepo, "overlays")
                 overlaypath=os.path.join(overlaypath, overlay)
 
-            self.build_dtb(overlaypath, args.outputpath)
+            self.build_dtb(overlaypath, args.outputpath, includepaths)
 
         return 0
 
@@ -468,7 +474,7 @@ class DTConf:
 
         return 0
 
-    def build_dtb(self, filename, outputpath=None) -> str:
+    def build_dtb(self, filename, outputpath=None, includepaths=None) -> str:
         """ Compile a dtbs file into dtb or dtbo output
 
             Args:
@@ -476,6 +482,7 @@ class DTConf:
                 outputpath (str) - output file name/folder, if None then extension
                     is appended to source file name, if it's a folder file with dtb/dtbo
                     extension is created
+                includepaths (list) - list of additional include paths
 
             Returns:
                 name of generated file
@@ -502,12 +509,37 @@ class DTConf:
             outputpath=os.path.join(
                 outputpath, os.path.basename(filename)+ext)
 
+
+        cppcmdline = ["cpp", "-nostdinc", "-undef", "-x", "assembler-with-cpp"]
+        dtccmdline = ["dtc", "-@", "-I", "dts", "-O", "dtb"]
+
+        if includepaths is not None:
+            for path in includepaths:
+                dtccmdline.append("-i")
+                dtccmdline.append(path)
+                cppcmdline.append("-I")
+                cppcmdline.append(path)
+
+        tmppath=filename+".tmp"
+
+        dtccmdline += ["-o", outputpath, tmppath]
+        cppcmdline += ["-o", tmppath, filename]
+
+        cppprocess=subprocess.run(
+            cppcmdline, stderr=subprocess.PIPE,)
+
+        if cppprocess.returncode != 0:
+            raise Exception("Failed to preprocess device tree.\n" +
+                            cppprocess.stderr.decode("utf-8"))
+
         dtcprocess=subprocess.run(
-            ["dtc", "-@", "-I", "dts", "-O", "dtb", "-o", outputpath, filename], stderr=subprocess.PIPE)
+            dtccmdline, stderr=subprocess.PIPE)
 
         if dtcprocess.returncode != 0:
             raise Exception("Failed to build device tree.\n" +
                             dtcprocess.stderr.decode("utf-8"))
+
+        os.remove(tmppath)
 
         logging.info("Successfully built device tree")
         return outputpath
@@ -744,6 +776,11 @@ class DTConf:
         """
 
         builtoverlays=[]
+        includepaths=[]
+
+        if self.userepo:
+            includepaths.append(os.path.join(self.gitrepo, "include"))
+            includepaths.append(os.path.join(self.gitrepo, "dts-arm32"))
 
         for overlay in overlays:
 
@@ -754,7 +791,7 @@ class DTConf:
                 overlaypath=os.path.join(overlaypath, overlay)
 
             logging.info("Building "+overlay)
-            outfile=self.build_dtb(overlaypath, None)
+            outfile=self.build_dtb(overlaypath, None, includepaths)
             logging.info("Validating "+outfile)
 
             if not self.validate_dtb(outfile, activedt):
