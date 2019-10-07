@@ -23,12 +23,12 @@ class DTConf:
                 "enable", "disable", "activate", "print"]
 
     products = [
-        ("colibri imx6", ["0014", "0015", "0016", "0017"]),
-        ("apalis imx6", ["0027", "0028", "0029", "0035"]),
-        ("colibri imx7", ["0032", "0033", "0039"]),
-        ("colibri imx6ull", ["0036", "0040", "0044", "0045"]),
-        ("apalis imx8", ["0037", "0047", "0048", "0049", "0046"]),
-        ("colibri imx8", ["0038", "0050", "0051", "0052"])
+        ("colibri imx6", ["0014", "0015", "0016", "0017"], "arm32"),
+        ("apalis imx6", ["0027", "0028", "0029", "0035"], "arm32"),
+        ("colibri imx7", ["0032", "0033", "0039"], "arm32"),
+        ("colibri imx6ull", ["0036", "0040", "0044", "0045"], "arm32"),
+        ("apalis imx8", ["0037", "0047", "0048", "0049", "0046"], "arm64"),
+        ("colibri imx8", ["0038", "0050", "0051", "0052"], "arm64")
     ]
     errormessages = {
        1: "FDT_ERR_NOTFOUND: The requested node or property does not exist.",
@@ -94,6 +94,8 @@ class DTConf:
         self.gitrepo = "/device-tree-overlays"
         self.userepo = True
         self.dogitpull = False
+        self.platform = ""
+        self.gitbranch = None
 
         # configures logging: errors and warnings on stderr, regular messages on stdout
         self.logger = logging.getLogger()
@@ -150,6 +152,7 @@ class DTConf:
             for productid in product[1]:
                 if productid == productstr:
                     self.product_id=productid
+                    self.platform = product[2]
                     logging.info(
                         "Device is "+product[0]+"("+self.product_id+")")
                     break
@@ -181,6 +184,8 @@ class DTConf:
                             action="store_true", default=False)
         parser.add_argument("--git-repo", dest="gitrepo", help="path of a different git repo to be used for the overlays",
                             action="store", default=self.gitrepo)
+        parser.add_argument("--git-branch", dest="gitbranch", help="git branch to be used for the overlays",
+                            action="store", default=None)
 
     def process_repo_args(self, args):
         if args.norepo == True:
@@ -188,37 +193,60 @@ class DTConf:
         else:
             self.gitrepo=args.gitrepo
             self.dogitpull=args.dopull
+            self.gitbranch=args.gitbranch
 
     def git_checkout(self):
         repo=git.Repo(path=self.gitrepo)
 
+        #fetches new branches
+        if self.dogitpull:
+            repo.remote("origin").fetch()
+
         if repo.bare:
             raise Exception("git repo seem to be empty.")
 
-        # try to find a branch matching current kernel version
-        uname=subprocess.run(
-            ["uname", "-r"], stdout=subprocess.PIPE)
+        ref=None
 
-        if uname.returncode != 0:
-            raise Exception("Error executing uname")
+        if self.gitbranch is not None:
+            ref = next((h for h in repo.remotes["origin"].refs if h.name == "origin/"+self.gitbranch), None)
 
-        kernelversion=uname.stdout.decode("utf-8")
+            if ref is None:
+                raise Exception(
+                    "Required branch does not exist")
 
-        kernelmaj, kernelmin=kernelversion.split(".")[0:2]
+        else:
+            # try to find a branch matching current kernel version
+            uname=subprocess.run(
+                ["uname", "-r"], stdout=subprocess.PIPE)
 
-        headname="toradex_"+kernelmaj+"."+kernelmin+".y"
+            if uname.returncode != 0:
+                raise Exception("Error executing uname")
+
+            kernelversion=uname.stdout.decode("utf-8")
+
+            kernelmaj, kernelmin=kernelversion.split(".")[0:2]
+
+            ref=None
+            prefix="origin/toradex_"+kernelmaj+"."+kernelmin
+
+            for branch in repo.remotes["origin"].refs:
+                if branch.name.startswith(prefix):
+                    if len(branch.name)==len(prefix) or not branch.name[len(prefix)].isnumeric():
+                        if ref is not None:
+                            raise Exception(
+                                "Multiple branches match running kernel version ("+kernelmaj+"."+kernelmin+")")
+                        ref=branch
+
+            if ref is None:
+                raise Exception(
+                    "No branch matching running kernel version ("+kernelmaj+"."+kernelmin+")")
+
+        ref.checkout()
 
         # update repo
         if self.dogitpull:
             repo.remote("origin").pull()
 
-        head=next((h for h in repo.branches if h.name == headname), None)
-
-        if head is None:
-            raise Exception(
-                "No branch matching current kernel version ("+kernelmaj+"."+kernelmin+")")
-
-        head.checkout()
 
     def status_createparser(self) -> argparse.ArgumentParser:
 
@@ -261,14 +289,18 @@ class DTConf:
 
         self.git_checkout()
 
-        logging.info("Available overlays for running kernel:")
 
         overlayspath=os.path.join(self.gitrepo, "overlays")
 
-        for path in os.listdir(overlayspath):
-            if (path.endswith(".dts")):
-                if os.path.isfile(os.path.join(overlayspath, path)):
-                    logging.info("\t"+path)
+        if not os.path.exists(overlayspath):
+            logging.warning("No overlays are available for running kernel.")
+        else:
+            logging.info("Available overlays for running kernel:")
+
+            for path in os.listdir(overlayspath):
+                if (path.endswith(".dts")):
+                    if os.path.isfile(os.path.join(overlayspath, path)):
+                        logging.info("\t"+path)
 
         return 0
 
@@ -303,7 +335,7 @@ class DTConf:
 
         if self.userepo:
             includepaths.append(os.path.join(self.gitrepo, "include"))
-            includepaths.append(os.path.join(self.gitrepo, "dts-arm32"))
+            includepaths.append(os.path.join(self.gitrepo, "dts-"+self.platform))
 
         for overlay in args.filename:
             overlaypath=overlay
