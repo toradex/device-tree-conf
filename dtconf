@@ -180,7 +180,7 @@ class DTConf:
     def add_repo_parms(self, parser):
         parser.add_argument("--no-git-repo", dest="norepo", help="Use an overlay that is not in the Toradex git repo",
                             action="store_true", default=False)
-        parser.add_argument("--do-git-pullpull", dest="dopull", help="Pull latest version of the overlays (requires an internet connection)",
+        parser.add_argument("--do-git-pull", dest="dopull", help="Pull latest version of the overlays (requires an internet connection)",
                             action="store_true", default=False)
         parser.add_argument("--git-repo", dest="gitrepo", help="path of a different git repo to be used for the overlays",
                             action="store", default=self.gitrepo)
@@ -670,6 +670,10 @@ class DTConf:
             Raises:
                 Exception - No active device tree
         """
+
+        if not os.path.exists(filename) or not os.path.isfile(filename):
+            raise Exception("Invalid file path.")
+
         activedtpath=self.get_active_dt_path(activedt)
 
         if activedtpath is None:
