@@ -245,7 +245,7 @@ class DTConf:
 
         # update repo
         if self.dogitpull:
-            repo.remote("origin").pull()
+            repo.remote("origin").pull(branch.name[len("origin/"):])
 
 
     def status_createparser(self) -> argparse.ArgumentParser:
