@@ -18,9 +18,43 @@ class DTConf:
 
         Allow easy implementation of "command interface"
     """
+    commands = [
+        {
+            "command": "build",
+            "description": "compiles device tree overlays from source (dts) to binary (dtb) format.",
+            "createparser": "build_createparser"
+        },
+        {
+            "command": "status",
+            "description": "show current state of device trees and overlays.",
+            "createparser": "status_createparser"
 
-    commands = ["build", "status", "validate",
-                "enable", "disable", "activate", "print"]
+        },
+        {
+            "command": "validate",
+            "description": "validate binary device tree overlays.",
+            "createparser": "validate_createparser"
+        },
+        {
+            "command": "enable",
+            "description": "enable a binary device tree overlay.",
+            "createparser": "enable_createparser"
+        },
+        {
+            "command": "disable",
+            "description": "disable binary device tree overlays.",
+            "createparser": "disable_createparser"
+        },
+        {
+            "command": "activate",
+            "description": "Build, validate and enable a source device tree overlay (dts).",
+            "createparser": "activate_createparser"
+        },
+        {
+            "command": "print",
+            "description": "Dumps binary device-tree overlays in human readable format.",
+            "createparser": "print_createparser"
+        }]
 
     products = [
         ("colibri imx6", ["0014", "0015", "0016", "0017"], "arm32"),
@@ -30,6 +64,7 @@ class DTConf:
         ("apalis imx8", ["0037", "0047", "0048", "0049", "0046"], "arm64"),
         ("colibri imx8", ["0038", "0050", "0051", "0052"], "arm64")
     ]
+
     errormessages = {
        1: "FDT_ERR_NOTFOUND: The requested node or property does not exist.",
        2: "FDT_ERR_EXISTS: Attempted to create a node or property which"
@@ -114,27 +149,6 @@ class DTConf:
         self.logger.addHandler(logstdout)
         self.logger.addHandler(logstderr)
 
-    def help(self, short):
-
-        logging.info("usage: dtconf < command > [arguments]\n")
-
-        if short:
-            logging.info("Commands:\n"
-                         "\thelp\n"
-                         "\tbuild\n"
-                         "\tstatus\n"
-                         "\tvalidate\n"
-                         "\tenable\n"
-                         "\tdisable\n"
-                         "\tactivate\n"
-                         "\tprint\n"
-                         "Use help command to have a more detailed list of commands and their arguments.")
-        else:
-            for command in DTConf.commands:
-                logging.info("\ncommand: "+command+"\n")
-                parser=getattr(self, command+"_createparser")()
-                parser.print_help()
-
     def setup(self) -> bool:
         """ Module initialization, detect module type and mounts boot partition.
 
@@ -178,6 +192,7 @@ class DTConf:
         return True
 
     def add_repo_parms(self, parser):
+
         parser.add_argument("--no-git-repo", dest="norepo", help="Use an overlay that is not in the Toradex git repo",
                             action="store_true", default=False)
         parser.add_argument("--do-git-pull", dest="dopull", help="Pull latest version of the overlays (requires an internet connection)",
@@ -188,6 +203,7 @@ class DTConf:
                             action="store", default=None)
 
     def process_repo_args(self, args):
+
         if args.norepo == True:
             self.userepo=False
         else:
@@ -196,6 +212,7 @@ class DTConf:
             self.gitbranch=args.gitbranch
 
     def git_checkout(self):
+
         repo=git.Repo(path=self.gitrepo)
 
         #fetches new branches
@@ -248,20 +265,15 @@ class DTConf:
             repo.remote("origin").pull(branch.name[len("origin/"):])
 
 
-    def status_createparser(self) -> argparse.ArgumentParser:
-
-        parser=argparse.ArgumentParser(prog="dtconf status",
-                                         description="\tshow current state of device trees and overlays.")
+    def status_createparser(self, parser):
 
         self.add_repo_parms(parser)
 
+        parser.set_defaults(func=self.status)
+
         return parser
 
-    def status(self, sysargs) -> int:
-
-        parser=self.status_createparser()
-
-        args=parser.parse_args(sysargs)
+    def status(self, args) -> int:
 
         self.process_repo_args(args)
 
@@ -289,7 +301,6 @@ class DTConf:
 
         self.git_checkout()
 
-
         overlayspath=os.path.join(self.gitrepo, "overlays")
 
         if not os.path.exists(overlayspath):
@@ -304,10 +315,7 @@ class DTConf:
 
         return 0
 
-    def build_createparser(self) -> argparse.ArgumentParser:
-
-        parser=argparse.ArgumentParser(prog="dtconf build",
-                                         description="compiles device tree overlays from source (dts) to binary (dtb) format.")
+    def build_createparser(self, parser):
 
         self.add_repo_parms(parser)
 
@@ -316,13 +324,11 @@ class DTConf:
         parser.add_argument("-o", "--output-path", help="output path for the compiled file(s)",
                             dest="outputpath", action="store", type=str, default=None)
 
+        parser.set_defaults(func=self.build)
+
         return parser
 
-    def build(self, sysargs) -> int:
-
-        parser=self.build_createparser()
-
-        args=parser.parse_args(sysargs)
+    def build(self, args) -> int:
 
         self.process_repo_args(args)
 
@@ -348,25 +354,16 @@ class DTConf:
 
         return 0
 
-    def validate_createparser(self) -> argparse.ArgumentParser:
-
-        parser=argparse.ArgumentParser(prog="dtconf validate",
-                                         description="\tvalidate binary device tree overlays.")
+    def validate_createparser(self, parser):
 
         parser.add_argument("filename", help="dtb file(s) to be validated", action="store",
                             nargs="+", type=str)
         parser.add_argument("-c", "--current-device-tree", help="currently active device tree",
                             dest="currentdevicetree", action="store", type=str, default=None)
 
-        return parser
-
-    def validate(self, sysargs) -> int:
+    def validate(self, args) -> int:
 
         retval=0
-
-        parser=self.validate_createparser()
-
-        args=parser.parse_args(sysargs)
 
         self.setup()
 
@@ -381,21 +378,14 @@ class DTConf:
 
         return retval
 
-    def enable_createparser(self) -> argparse.ArgumentParser:
-
-        parser=argparse.ArgumentParser(prog="dtconf enable",
-                                         description="\tenable a binary device tree overlay.")
+    def enable_createparser(self, parser):
 
         parser.add_argument("filename", help="dtb file(s) to be enabled", action="store",
                             nargs="+", type=str)
 
-        return parser
+        parser.set_defaults(func=self.enable)
 
-    def enable(self, sysargs) -> int:
-
-        parser=self.enable_createparser()
-
-        args=parser.parse_args(sysargs)
+    def enable(self, args) -> int:
 
         self.setup()
 
@@ -403,22 +393,15 @@ class DTConf:
             self.enable_overlay(overlay)
             logging.info("Overlay file " + overlay + " has been enabled")
 
-    def disable_createparser(self) -> argparse.ArgumentParser:
-
-        parser=argparse.ArgumentParser(prog="dtconf disable",
-                                         description="\tdisable binary device tree overlays")
+    def disable_createparser(self, parser):
 
         parser.add_argument("filename", help="dtb file(s) to be disabled", action="store",
                             nargs="*", type=str)
         parser.add_argument("--all", help="disables all overlay", action="store_true",
                             default=False)
-        return parser
+        parser.set_defaults(func=self.disable)
 
-    def disable(self, sysargs) -> int:
-
-        parser=self.disable_createparser()
-
-        args=parser.parse_args(sysargs)
+    def disable(self, args) -> int:
 
         self.setup()
 
@@ -431,9 +414,7 @@ class DTConf:
                 self.disable_overlay(overlay)
                 logging.info("Overlay file " + overlay + " has been disabled")
 
-    def activate_createparser(self) -> argparse.ArgumentParser:
-        parser=argparse.ArgumentParser(prog="dtconf activate",
-                                         description='Build, validate and enable a source device tree overlay (dts).')
+    def activate_createparser(self, parser):
 
         self.add_repo_parms(parser)
 
@@ -441,14 +422,9 @@ class DTConf:
                             nargs="+", type=str)
         parser.add_argument("-c", "--current-device-tree", help="currently active device tree",
                             dest="currentdevicetree", action="store", type=str, default=None)
+        parser.set_defaults(func=self.activate)
 
-        return parser
-
-    def activate(self, sysargs) -> int:
-
-        parser=self.activate_createparser()
-
-        args=parser.parse_args(sysargs)
+    def activate(self, args) -> int:
 
         self.process_repo_args(args)
 
@@ -459,11 +435,7 @@ class DTConf:
 
         self.activate_overlays(args.filename, args.currentdevicetree)
 
-    def print_createparser(self) -> argparse.ArgumentParser:
-
-        parser=argparse.ArgumentParser(prog="dtconf print",
-                                         description='Dumps binary device-tree overlays in human readable format.')
-
+    def print_createparser(self, parser):
         parser.add_argument("filename", help="dtb file(s) to be dumped", action="store",
                             nargs="*", type=str)
 
@@ -476,13 +448,10 @@ class DTConf:
         parser.add_argument("-a", "--active-device-tree", help="dumps active device tree from procfs",
                             dest="active", action="store_true", default=False)
 
+        parser.set_defaults(func=self.print)
         return parser
 
-    def print(self, sysargs) -> int:
-
-        parser=self.print_createparser()
-
-        args=parser.parse_args(sysargs)
+    def print(self, args) -> int:
 
         self.setup()
 
@@ -931,33 +900,33 @@ class DTConf:
 
         return self._dump_node(fdt.resolve_path("/"),0,[])
 
+    def create_help(self):
+
+        parser=argparse.ArgumentParser(
+            description="Device tree overlay configuration tool")
+
+        subparsers = parser.add_subparsers(title="Possible subcommands")
+
+        # Set commands
+        for command in self.commands:
+            subparser = subparsers.add_parser(command["command"], help=command["description"])
+            getattr(self, command["createparser"])(subparser)
+
+        return parser
+
     def run(self, args) -> int:
         """ Processes command line arguments and return an exit code
         """
 
-        if len(sys.argv) <= 1:
-            self.help(True)
-            return 0
+        parser = self.create_help()
 
-        # command line args
-        parser=argparse.ArgumentParser(
-            description="Device tree overlays tool", usage="dtconf <command> [<args>]")
+        args = parser.parse_args()
 
-        parser.add_argument("command", help="subcommand to run")
-
-        args=parser.parse_args(sys.argv[1:2])
-
-        if args.command == "help":
-            self.help(False)
-            return 0
-
-        if args.command not in DTConf.commands:
-            logging.error("Unrecognized command.")
-            self.help(True)
-            return -1
-
-        # invoke command using its name (we are lazy)
-        return getattr(self, args.command)(sys.argv[2:])
+        try:
+            # Call the actual function registered in createparser
+            return args.func(args)
+        except:
+            parser.print_help()
 
 
 if __name__ == "__main__":
