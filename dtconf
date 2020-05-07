@@ -11,7 +11,7 @@ import typing
 import argparse
 import git
 from pyfdt.pyfdt import *
-
+from overlay_parser import OverlayParser
 
 class DTConf:
     """ Singleton class used to manage former global vars and argument parsing
@@ -271,6 +271,10 @@ class DTConf:
 
         self.add_repo_parms(parser)
 
+        parser.add_argument("-s", "--short", dest="short",
+                            help="Only show overlay names without description",
+                            action="store_true")
+
         parser.set_defaults(func=self.status)
 
         return parser
@@ -312,8 +316,15 @@ class DTConf:
 
             for path in os.listdir(overlayspath):
                 if (path.endswith(".dts")):
-                    if os.path.isfile(os.path.join(overlayspath, path)):
-                        logging.info("\t"+path)
+                    overlay_path = os.path.join(overlayspath, path)
+                    if os.path.isfile(overlay_path):
+                        parser = OverlayParser(overlay_path)
+                        parser.parse()
+                        if args.short:
+                            logging.info("\t"+path)
+                        else:
+                            logging.info("\t"+path+":")
+                            logging.info("\t\t"+parser.description)
 
         return 0
 
