@@ -314,17 +314,18 @@ class DTConf:
         else:
             logging.info("Available overlays for running kernel:")
 
-            for path in os.listdir(overlayspath):
+            for path in sorted(os.listdir(overlayspath)):
                 if (path.endswith(".dts")):
                     overlay_path = os.path.join(overlayspath, path)
                     if os.path.isfile(overlay_path):
                         parser = OverlayParser(overlay_path)
-                        parser.parse()
-                        if args.short:
-                            logging.info("\t"+path)
-                        else:
-                            logging.info("\t"+path+":")
-                            logging.info("\t\t"+parser.description)
+                        if parser.check_compatibility():
+                            parser.parse()
+                            if args.short:
+                                logging.info("\t"+path)
+                            else:
+                                logging.info("\t"+path+":")
+                                logging.info("\t\t"+parser.description)
 
         return 0
 
