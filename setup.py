@@ -6,5 +6,6 @@ setup(
     author="Valter Minute",
     author_email="valter.minute@toradex.com",
     scripts=["dtconf"],
-    install_requires=["gitpython", "pyfdt"]
+    install_requires=["gitpython", "pyfdt"],
+    py_modules=["overlay_parser"]
 )
