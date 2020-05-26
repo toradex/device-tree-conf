@@ -744,6 +744,8 @@ class DTConf:
         with open(self.get_overlays_file_path(), "w") as f:
             f.writelines(overlayslines)
 
+        logging.info("Overlay has been successfully enabled.")
+
     def disable_overlay(self, overlay):
         """ Applies overlays to boot configuration
 
