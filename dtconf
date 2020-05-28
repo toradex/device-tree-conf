@@ -213,10 +213,30 @@ class DTConf:
             self.dogitpull=args.dopull
             self.gitbranch=args.gitbranch
 
+    def get_kernel_version(self):
+        # try to find a branch matching current kernel version
+        uname = os.uname()
+        return uname.release.split(".")[0:2] 
+
+    def find_branch(self,repo):
+
+        kernelmaj, kernelmin=self.get_kernel_version()
+
+        prefix="origin/toradex_"+kernelmaj+"."+kernelmin
+        
+        ref = None
+        for branch in repo.remotes["origin"].refs:
+            if branch.name.startswith(prefix):
+                if len(branch.name)==len(prefix) or not branch.name[len(prefix)].isnumeric():
+                    if ref is not None:
+                        raise Exception(
+                    "Multiple branches match running kernel version ("+kernelmaj+"."+kernelmin+")")
+                ref=branch
+        return ref
+
     def git_checkout(self):
 
         repo=git.Repo(path=self.gitrepo)
-
         #fetches new branches
         if self.dogitpull:
             repo.remote("origin").fetch()
@@ -234,31 +254,20 @@ class DTConf:
                     "Required branch does not exist")
 
         else:
-            # try to find a branch matching current kernel version
-            uname=subprocess.run(
-                ["uname", "-r"], stdout=subprocess.PIPE)
+            kernelmaj, kernelmin=self.get_kernel_version()
 
-            if uname.returncode != 0:
-                raise Exception("Error executing uname")
-
-            kernelversion=uname.stdout.decode("utf-8")
-
-            kernelmaj, kernelmin=kernelversion.split(".")[0:2]
-
-            ref=None
-            prefix="origin/toradex_"+kernelmaj+"."+kernelmin
-
-            for branch in repo.remotes["origin"].refs:
-                if branch.name.startswith(prefix):
-                    if len(branch.name)==len(prefix) or not branch.name[len(prefix)].isnumeric():
-                        if ref is not None:
-                            raise Exception(
-                                "Multiple branches match running kernel version ("+kernelmaj+"."+kernelmin+")")
-                        ref=branch
-
+            ref = self.find_branch(repo)
+            
             if ref is None:
-                raise Exception(
-                    "No branch matching running kernel version ("+kernelmaj+"."+kernelmin+")")
+                print("No branch matching running kernel version ("+kernelmaj+"."+kernelmin+")")
+                answer = str(input("Do you want to pull the latest overlays from the git repo? (y/n)"))
+                if answer in ['y']:  
+                    repo.remote("origin").fetch()
+                    ref = self.find_branch(repo)                           
+                
+                if ref is None:
+                    raise Exception(
+                         "No branch matching running kernel version ("+kernelmaj+"."+kernelmin+")")
 
         ref.checkout()
 
