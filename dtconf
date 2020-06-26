@@ -293,7 +293,7 @@ class DTConf:
 
         for path in os.listdir(searchpath):
             if (path.endswith(".dtb")):
-                if os.path.isfile(searchpath + path):
+                if os.path.isfile(os.path.join(searchpath, path)):
                     logging.info("\t"+path)
 
         if not self.userepo:
@@ -558,8 +558,8 @@ class DTConf:
 
         with open("/boot/loader/uEnv.txt", "r") as f:
             for line in f:
-                if line.startswith("fdt_path="):
-                    searchpath=line[len("fdt_path="):]
+                if line.startswith("fdtdir="):
+                    searchpath=line[len("fdtdir="):]
                     searchpath=searchpath.rstrip()
                     break
 
@@ -585,7 +585,7 @@ class DTConf:
         searchpath=self.get_dt_search_path()
 
         if activedt is not None:
-            activedtpath=searchpath + activedt
+            activedtpath=os.path.join(searchpath, activedt)
         else:
 
             with open('/proc/device-tree/model', 'r') as f:
@@ -597,7 +597,7 @@ class DTConf:
             for path in os.listdir(searchpath):
                 if (path.endswith(".dtb")):
 
-                    dtbpath=searchpath + path
+                    dtbpath=os.path.join(searchpath, path)
                     if os.path.isfile(dtbpath):
 
                         dtbdump=self.dump_dtb(dtbpath)
